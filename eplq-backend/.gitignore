@@ -1,0 +1,12 @@
+# Ignore environment variables
+.env
+
+# Ignore node dependencies
+node_modules/
+
+# OS-specific files
+.DS_Store
+
+# IDE/Editor folders
+.vs/
+.idea/
