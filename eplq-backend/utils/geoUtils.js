@@ -1,12 +1,13 @@
 const crypto = require('crypto');
-const geohash = require('ngeohash');
+const geohash = require('ngeohash'); // ✅ Correct geohash library
 
-// Encryption configuration
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+// Encryption setup
+const secret = process.env.GEO_SECRET || '1234567890abcdef1234567890abcdef';
+const ENCRYPTION_KEY = secret.padEnd(64, '0').slice(0, 64);
 const ALGORITHM = 'aes-256-ctr';
 
-// Encrypt coordinates
-const encryptLocation = (lat, lng) => {
+// Encrypt location data
+exports.encryptLocation = (lat, lng) => {
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
   const encrypted = Buffer.concat([
@@ -16,8 +17,8 @@ const encryptLocation = (lat, lng) => {
   return `${iv.toString('hex')}:${encrypted.toString('hex')}`;
 };
 
-// Decrypt coordinates
-const decryptLocation = (encrypted) => {
+// Decrypt location data
+exports.decryptLocation = (encrypted) => {
   const [iv, content] = encrypted.split(':');
   const decipher = crypto.createDecipheriv(
     ALGORITHM,
@@ -31,22 +32,11 @@ const decryptLocation = (encrypted) => {
   return JSON.parse(decrypted.toString());
 };
 
-// Generate geohash
-const generateGeohash = (lat, lng, precision = 6) => {
-  return geohash.encode(lat, lng, precision);
-};
-
-// Get covering geohashes for search area
-const getCoveringGeohashes = (lat, lng, radius, precision = 6) => {
-  const bbox = geohash.bboxes(lat, lng, radius, precision);
-  return geohash.bboxesToGeohashes(bbox);
-};
-
-// Validate coordinates
-const validateCoordinates = (coords) => {
+// Validate coordinate format
+exports.validateCoordinates = (coords) => {
   try {
-    const lat = parseFloat(coords.lat);
-    const lng = parseFloat(coords.lng);
+    const lat = Number(coords.lat);
+    const lng = Number(coords.lng);
     return (
       !isNaN(lat) &&
       !isNaN(lng) &&
@@ -60,25 +50,53 @@ const validateCoordinates = (coords) => {
   }
 };
 
-// Calculate distance between points
-const calculateDistance = (point1, point2) => {
-  const R = 6371e3; // Earth radius in meters
-  const φ1 = point1.lat * Math.PI/180;
-  const φ2 = point2.lat * Math.PI/180;
-  const Δφ = (point2.lat - point1.lat) * Math.PI/180;
-  const Δλ = (point2.lng - point1.lng) * Math.PI/180;
-
-  const a = Math.sin(Δφ/2) ** 2 + 
-            Math.cos(φ1) * Math.cos(φ2) * 
-            Math.sin(Δλ/2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+// Generate geohash for indexing
+exports.generateGeohash = (lat, lng, precision = 6) => {
+  return geohash.encode(lat, lng, precision);
 };
 
-module.exports = {
-  validateCoordinates,
-  encryptLocation,
-  decryptLocation,
-  generateGeohash,
-  getCoveringGeohashes,
-  calculateDistance
+// Get covering geohashes for search area
+exports.getCoveringGeohashes = (lat, lng, radius) => {
+  try {
+    const precision = 6; // Match upload precision
+    const { min, max } = geohash.bboxes(lat, lng, radius, precision);
+    const prefixes = new Set();
+    
+    // Simple prefix expansion
+    for (let hash of [min, max]) {
+      prefixes.add(hash.substring(0, precision));
+    }
+    
+    return Array.from(prefixes);
+  } catch (error) {
+    console.error('Geohash Error:', error);
+    return [];
+  }
+};
+// Generate geohashes from bounding box
+function bboxesToGeohashes(bbox, precision) {
+  const [minLat, minLon, maxLat, maxLon] = bbox;
+  const geohashes = new Set();
+
+  for (let lat = minLat; lat <= maxLat; lat += 0.01) {
+    for (let lon = minLon; lon <= maxLon; lon += 0.01) {
+      geohashes.add(geohash.encode(lat, lon, precision));
+    }
+  }
+
+  return Array.from(geohashes);
+}
+
+// Calculate distance between two points (in meters)
+exports.calculateDistance = (point1, point2) => {
+  const R = 6371e3; // Earth radius in meters
+  const φ1 = point1.lat * Math.PI / 180;
+  const φ2 = point2.lat * Math.PI / 180;
+  const Δφ = (point2.lat - point1.lat) * Math.PI / 180;
+  const Δλ = (point2.lng - point1.lng) * Math.PI / 180;
+  const a = Math.sin(Δφ / 2) ** 2 +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) ** 2;
+
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };

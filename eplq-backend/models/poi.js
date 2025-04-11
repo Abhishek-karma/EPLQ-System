@@ -6,16 +6,29 @@ const poiSchema = new mongoose.Schema({
     type: String,
     required: [true, 'POI name is required'],
     trim: true,
-    maxlength: [100, 'Name cannot exceed 100 characters']
+    maxlength: 100
   },
   type: {
     type: String,
-    enum: ['hospital', 'police', 'fire', 'landmark', 'general'],
+    enum: ['hospital', 'police', 'fire', 'landmark', 'general','school','gov_office','religious'],
     default: 'general'
   },
   description: {
     type: String,
-    maxlength: [500, 'Description cannot exceed 500 characters']
+    maxlength: 500
+  },
+  encryptedData: {
+    type: String,
+    required: true
+  },
+  geohash: {
+    type: String,
+    index: true,
+    required: true,
+    validate: {
+      validator: (v) => /^[0123456789bcdefghjkmnpqrstuvwxyz]{6}$/.test(v),
+      message: 'Invalid geohash format'
+    }
   },
   location: {
     type: {
@@ -28,27 +41,20 @@ const poiSchema = new mongoose.Schema({
       required: true,
       validate: {
         validator: function(coords) {
-          return validateCoordinates(coords);
+          return validateCoordinates({ lng: coords[0], lat: coords[1] });
         },
-        message: props => `Invalid coordinates: ${props.value}`
+        message: 'Invalid GeoJSON coordinates [lng, lat]'
       }
     }
-  },
-  encryptedData: {
-    type: String,
-    required: true
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
   }
-});
+}, { timestamps: true });
 
-poiSchema.index({ location: '2dsphere' });
+// Compound index for efficient queries
+poiSchema.index({ geohash: 1, type: 1, name: 1  });
 
 module.exports = mongoose.model('POI', poiSchema);

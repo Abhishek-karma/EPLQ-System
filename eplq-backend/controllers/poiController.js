@@ -1,99 +1,117 @@
 const POI = require('../models/poi');
-const { validateCoordinates, encryptLocation, decryptLocation, getCoveringGeohashes, calculateDistance } = require('../utils/geoUtils');
+const { 
+  validateCoordinates,
+  encryptLocation,
+  decryptLocation,
+  generateGeohash,
+  getCoveringGeohashes,
+  calculateDistance
+} = require('../utils/geoUtils');
 
-// Admin uploads POI
 exports.uploadPOI = async (req, res) => {
   try {
     const { lat, lng, ...poiData } = req.body;
 
-    // Validate coordinates
+    // Validate input coordinates
     if (!validateCoordinates({ lat, lng })) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid coordinates provided'
+        message: 'Invalid coordinates. Use valid lat(-90 to 90) and lng(-180 to 180)'
       });
     }
 
-    // Encrypt location data
+    // Encrypt sensitive location data
     const encryptedData = encryptLocation(lat, lng);
     
-    // Generate geohash for search indexing
+    // Generate searchable geohash
     const geohash = generateGeohash(lat, lng, 6); // ~1.2km precision
 
-    const newPOI = new POI({
+    // Create new POI document
+    const newPOI = await POI.create({
       ...poiData,
       encryptedData,
       geohash,
+      location: {
+        type: 'Point',
+        coordinates: [lng, lat] // GeoJSON format: [longitude, latitude]
+      },
       createdBy: req.user._id
     });
-
-    await newPOI.save();
 
     // Return response without sensitive data
     const responseData = newPOI.toObject();
     delete responseData.encryptedData;
+    delete responseData.__v;
 
     res.status(201).json({
       success: true,
-      message: 'POI created successfully',
       data: responseData
     });
 
   } catch (error) {
-    console.error('Upload POI Error:', error);
-    res.status(500).json({
+    console.error('Upload Error:', error);
+    res.status(error.name === 'ValidationError' ? 400 : 500).json({
       success: false,
-      message: error.message || 'Server error'
+      message: error.message
     });
   }
 };
 
-// User searches POIs within radius
 exports.searchPOIs = async (req, res) => {
   try {
-    const { lat, lng, radius = 5000 } = req.body;
+    const { lat, lng, radius = 5000, name, type } = req.body;
 
     // Validate coordinates
-    if (!validateCoordinates({ lat, lng })) {
+    if (!validateCoordinates({ lat, lng }) || radius <= 0) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid search coordinates'
+        message: 'Invalid coordinates or radius'
       });
     }
 
-    // Get covering geohash prefixes
+    // Generate geohash prefixes
     const geohashPrefixes = getCoveringGeohashes(lat, lng, radius);
+    if (!geohashPrefixes.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid search area'
+      });
+    }
 
-    // Query database using geohash prefixes
-    const pois = await POI.find({
-      geohash: { $in: geohashPrefixes }
-    }).lean();
+    // Build simple query
+    const query = {
+      geohash: { $in: geohashPrefixes },
+      ...(name && { name: new RegExp(name, 'i') }),
+      ...(type && validTypes.includes(type) && { type })
+    };
 
-    // Decrypt and filter results
-    const results = pois
-      .map(poi => ({
-        ...poi,
-        location: decryptLocation(poi.encryptedData)
-      }))
-      .filter(poi => 
-        calculateDistance(
-          { lat: parseFloat(lat), lng: parseFloat(lng) },
-          poi.location
-        ) <= radius
-      )
-      .map(({ encryptedData, __v, ...rest }) => rest); // Remove sensitive fields
+    // Execute query
+    const pois = await POI.find(query)
+      .select('name type location createdAt')
+      .lean();
 
-    res.status(200).json({
+    // Filter results by distance
+    const results = pois.filter(poi => 
+      calculateDistance(
+        { lat: parseFloat(lat), lng: parseFloat(lng) },
+        {
+          lat: poi.location.coordinates[1],
+          lng: poi.location.coordinates[0]
+        }
+      ) <= radius
+    );
+
+    res.json({
       success: true,
       count: results.length,
       data: results
     });
 
   } catch (error) {
-    console.error('Search POIs Error:', error);
+    console.error('Search Error:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Server error'
+      message: 'Search failed'
     });
   }
 };
