@@ -59,59 +59,54 @@ exports.uploadPOI = async (req, res) => {
 
 exports.searchPOIs = async (req, res) => {
   try {
-    const { lat, lng, radius = 5000, name, type } = req.body;
+    const { lat, lng, radius = 5000 } = req.body;
 
-    // Validate coordinates
+    // Validate input
     if (!validateCoordinates({ lat, lng }) || radius <= 0) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid coordinates or radius'
+        message: 'Invalid coordinates/radius'
       });
     }
 
-    // Generate geohash prefixes
-    const geohashPrefixes = getCoveringGeohashes(lat, lng, radius);
-    if (!geohashPrefixes.length) {
+    // Get geohash patterns to search
+    const geohashList = getCoveringGeohashes(lat, lng, radius);
+
+    if (!geohashList.length) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid search area'
+        message: 'No geohash matches for the area'
       });
     }
 
-    // Build simple query
-    const query = {
-      geohash: { $in: geohashPrefixes },
-      ...(name && { name: new RegExp(name, 'i') }),
-      ...(type && validTypes.includes(type) && { type })
-    };
+    // Query by geohash set
+    const pois = await POI.find({ geohash: { $in: geohashList } }).lean();
 
-    // Execute query
-    const pois = await POI.find(query)
-      .select('name type location createdAt')
-      .lean();
-
-    // Filter results by distance
-    const results = pois.filter(poi => 
-      calculateDistance(
-        { lat: parseFloat(lat), lng: parseFloat(lng) },
-        {
-          lat: poi.location.coordinates[1],
-          lng: poi.location.coordinates[0]
-        }
-      ) <= radius
-    );
+    // Optionally filter using actual distance for higher accuracy
+    const filtered = pois.filter(poi => {
+      const poiLat = poi.location.coordinates[1];
+      const poiLng = poi.location.coordinates[0];
+      const dist = calculateDistance({ lat, lng }, { lat: poiLat, lng: poiLng });
+      return dist <= radius;
+    });
 
     res.json({
       success: true,
-      count: results.length,
-      data: results
+      count: filtered.length,
+      data: filtered.map(poi => ({
+        ...poi,
+        location: {
+          lat: poi.location.coordinates[1],
+          lng: poi.location.coordinates[0]
+        }
+      }))
     });
 
   } catch (error) {
     console.error('Search Error:', error);
     res.status(500).json({
       success: false,
-      message: 'Search failed'
+      message: 'Search operation failed'
     });
   }
 };

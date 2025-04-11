@@ -1,7 +1,6 @@
 const crypto = require('crypto');
-const geohash = require('ngeohash'); // ✅ Correct geohash library
+const geohash = require('ngeohash');
 
-// Encryption setup
 const secret = process.env.GEO_SECRET || '1234567890abcdef1234567890abcdef';
 const ENCRYPTION_KEY = secret.padEnd(64, '0').slice(0, 64);
 const ALGORITHM = 'aes-256-ctr';
@@ -55,41 +54,51 @@ exports.generateGeohash = (lat, lng, precision = 6) => {
   return geohash.encode(lat, lng, precision);
 };
 
-// Get covering geohashes for search area
-exports.getCoveringGeohashes = (lat, lng, radius) => {
-  try {
-    const precision = 6; // Match upload precision
-    const { min, max } = geohash.bboxes(lat, lng, radius, precision);
-    const prefixes = new Set();
-    
-    // Simple prefix expansion
-    for (let hash of [min, max]) {
-      prefixes.add(hash.substring(0, precision));
-    }
-    
-    return Array.from(prefixes);
-  } catch (error) {
-    console.error('Geohash Error:', error);
-    return [];
-  }
-};
-// Generate geohashes from bounding box
-function bboxesToGeohashes(bbox, precision) {
-  const [minLat, minLon, maxLat, maxLon] = bbox;
-  const geohashes = new Set();
+// Bounding box calculation
+function getBoundingBox(lat, lng, radius) {
+  const earthRadius = 6371e3; // meters
+  const dLat = (radius / earthRadius) * (180 / Math.PI);
+  const dLng = dLat / Math.cos((lat * Math.PI) / 180);
 
-  for (let lat = minLat; lat <= maxLat; lat += 0.01) {
-    for (let lon = minLon; lon <= maxLon; lon += 0.01) {
-      geohashes.add(geohash.encode(lat, lon, precision));
+  return {
+    minLat: lat - dLat,
+    maxLat: lat + dLat,
+    minLng: lng - dLng,
+    maxLng: lng + dLng
+  };
+}
+
+// Generate geohashes for the bounding box
+function bboxesToGeohashes(bbox, precision) {
+  const { minLat, minLng, maxLat, maxLng } = bbox;
+  const geohashes = new Set();
+  const latStep = 0.01;
+  const lngStep = 0.01;
+
+  for (let lat = minLat; lat <= maxLat; lat += latStep) {
+    for (let lng = minLng; lng <= maxLng; lng += lngStep) {
+      geohashes.add(geohash.encode(lat, lng, precision));
     }
   }
 
   return Array.from(geohashes);
 }
 
+// Get covering geohashes
+exports.getCoveringGeohashes = (lat, lng, radius) => {
+  try {
+    const precision = 6;
+    const bbox = getBoundingBox(lat, lng, radius);
+    return bboxesToGeohashes(bbox, precision);
+  } catch (error) {
+    console.error('Geohash Error:', error.message);
+    return [];
+  }
+};
+
 // Calculate distance between two points (in meters)
 exports.calculateDistance = (point1, point2) => {
-  const R = 6371e3; // Earth radius in meters
+  const R = 6371e3;
   const φ1 = point1.lat * Math.PI / 180;
   const φ2 = point2.lat * Math.PI / 180;
   const Δφ = (point2.lat - point1.lat) * Math.PI / 180;
