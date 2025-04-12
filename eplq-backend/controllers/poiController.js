@@ -59,41 +59,39 @@ exports.uploadPOI = async (req, res) => {
 
 exports.searchPOIs = async (req, res) => {
   try {
-    const { lat, lng, radius = 5000 } = req.body;
+    const { lat, lng, radius = 5000, name, type } = req.body;
 
-    // Validate input
-    if (!validateCoordinates({ lat, lng }) || radius <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid coordinates/radius'
-      });
+    const query = {};
+
+    // If coordinates are provided, add geohash-based filtering
+    let useGeoFilter = validateCoordinates({ lat, lng }) && radius > 0;
+    if (useGeoFilter) {
+      const patterns = getCoveringGeohashes(lat, lng, radius);
+      if (!patterns.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid geolocation search area'
+        });
+      }
+      query.geohash = { $regex: new RegExp(`^(${patterns.join('|')})`) };
     }
 
-    // Get geohash patterns to search
-    const geohashList = getCoveringGeohashes(lat, lng, radius);
-
-    if (!geohashList.length) {
-      return res.status(400).json({
-        success: false,
-        message: 'No geohash matches for the area'
-      });
+    // Optional name filter (case-insensitive partial match)
+    if (name && name.trim() !== '') {
+      query.name = { $regex: new RegExp(name.trim(), 'i') };
     }
 
-    // Query by geohash set
-    const pois = await POI.find({ geohash: { $in: geohashList } }).lean();
+    // Optional type filter (exact match)
+    if (type && type.trim() !== '') {
+      query.type = type.trim();
+    }
 
-    // Optionally filter using actual distance for higher accuracy
-    const filtered = pois.filter(poi => {
-      const poiLat = poi.location.coordinates[1];
-      const poiLng = poi.location.coordinates[0];
-      const dist = calculateDistance({ lat, lng }, { lat: poiLat, lng: poiLng });
-      return dist <= radius;
-    });
+    const pois = await POI.find(query).lean();
 
-    res.json({
+    res.status(200).json({
       success: true,
-      count: filtered.length,
-      data: filtered.map(poi => ({
+      count: pois.length,
+      data: pois.map(poi => ({
         ...poi,
         location: {
           lat: poi.location.coordinates[1],
@@ -106,7 +104,9 @@ exports.searchPOIs = async (req, res) => {
     console.error('Search Error:', error);
     res.status(500).json({
       success: false,
-      message: 'Search operation failed'
+      message: 'Search failed'
     });
   }
 };
+
+
