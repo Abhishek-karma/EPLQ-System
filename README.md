@@ -1,6 +1,5 @@
 
-```markdown
-# EPLQ - Efficient Privacy-Preserving Location Query System
+# **EPLQ - Efficient Privacy-Preserving Location Query System**
 
 🌐 **Live Demo**: [https://eplq-system-bkuf.vercel.app/](https://eplq-system-bkuf.vercel.app/)
 
@@ -34,7 +33,7 @@ A secure location-based query system with encrypted geospatial data storage and 
 ```bash
 git clone https://github.com/yourusername/eplq-system.git
 cd eplq-system
-```
+
 
 ### Install Backend and Frontend Dependencies
 
@@ -106,13 +105,3 @@ VITE_API_BASE_URL=http://localhost:4000/api
 
 MIT License - See [LICENSE](LICENSE) for details
 ```
-
-### Key Changes and Fixes:
-
-1. **Corrected API base URL**: The `VITE_API_BASE_URL` should reflect the backend URL (`http://localhost:4000/api` for local development).
-2. **Simplified Install Steps**: The installation steps for the backend and frontend are now streamlined.
-3. **Configuration Updates**: Made the `.env` setup clear with proper directory and environment variable definitions.
-4. **Removed unnecessary sections**: Since deployment and Firebase references were removed, I kept it focused on local development and setup.
-5. **Removed Vercel Demo Badge**: Kept only the essential parts of the README focused on core functionality.
-
-If you need any further changes or clarifications, feel free to ask!
