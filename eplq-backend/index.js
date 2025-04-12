@@ -21,7 +21,10 @@ app.use(express.json()); // Body parser
 app.use('/api/auth', authRoutes);
 app.use('/api/poi', poiRoutes);
 app.get('/', (req, res) => {
-  res.json({ message: 'API is working!' });
+  res.send({
+    activeStatus:true,
+    error:false,
+  })
 });
 
 // MongoDB connection
