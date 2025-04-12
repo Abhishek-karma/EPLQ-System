@@ -21,7 +21,8 @@
     "firebase-admin": "^13.2.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.13.2",
-    "ngeohash": "^0.6.3"
+    "ngeohash": "^0.6.3",
+    "serverless-http": "^3.2.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"
